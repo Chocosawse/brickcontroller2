@@ -3,6 +3,7 @@
     public enum ControllerAxisCharacteristic
     {
         Linear,
+        Quadratic,
         Exponential,
         Logarithmic
     }

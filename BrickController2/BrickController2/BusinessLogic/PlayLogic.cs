@@ -245,7 +245,13 @@ namespace BrickController2.BusinessLogic
 
             axisValue = controllerAction.AxisActiveZonePercent > 0 ? axisValue * 100F / controllerAction.AxisActiveZonePercent : axisValue;
             
-            if (controllerAction.AxisCharacteristic == ControllerAxisCharacteristic.Exponential)
+            if (controllerAction.AxisCharacteristic == ControllerAxisCharacteristic.Quadratic)
+            {
+                // Softer than Exponential: still full range at the stick's extremes, but less
+                // sensitive than Linear through the low-to-moderate part of the travel.
+                axisValue = Math.Sign(axisValue) * axisValue * axisValue;
+            }
+            else if (controllerAction.AxisCharacteristic == ControllerAxisCharacteristic.Exponential)
             {
                 // Cheat :)
                 axisValue = axisValue * axisValue * axisValue;
