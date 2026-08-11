@@ -242,6 +242,7 @@ namespace BrickController2.CreationManagement
             int maxServoAngle,
             int servoBaseAngle,
             int stepperAngle,
+            bool isStepperFeedbackEnabled,
             string sequenceName)
         {
             using (await _asyncLock.LockAsync())
@@ -260,6 +261,7 @@ namespace BrickController2.CreationManagement
                     controllerAction.MaxServoAngle = maxServoAngle;
                     controllerAction.ServoBaseAngle = servoBaseAngle;
                     controllerAction.StepperAngle = stepperAngle;
+                    controllerAction.IsStepperFeedbackEnabled = isStepperFeedbackEnabled;
                     controllerAction.SequenceName = sequenceName;
                     await _creationRepository.UpdateControllerActionAsync(controllerAction);
                 }
@@ -280,6 +282,7 @@ namespace BrickController2.CreationManagement
                         MaxServoAngle = maxServoAngle,
                         ServoBaseAngle = servoBaseAngle,
                         StepperAngle = stepperAngle,
+                        IsStepperFeedbackEnabled = isStepperFeedbackEnabled,
                         SequenceName = sequenceName
                     };
                     await _creationRepository.InsertControllerActionAsync(controllerEvent, controllerAction);
@@ -314,6 +317,7 @@ namespace BrickController2.CreationManagement
             int maxServoAngle,
             int servoBaseAngle,
             int stepperAngle,
+            bool isStepperFeedbackEnabled,
             string sequenceName)
         {
             using (await _asyncLock.LockAsync())
@@ -339,6 +343,7 @@ namespace BrickController2.CreationManagement
                 controllerAction.MaxServoAngle = maxServoAngle;
                 controllerAction.ServoBaseAngle = servoBaseAngle;
                 controllerAction.StepperAngle = stepperAngle;
+                controllerAction.IsStepperFeedbackEnabled = isStepperFeedbackEnabled;
                 controllerAction.SequenceName = sequenceName;
                 await _creationRepository.UpdateControllerActionAsync(controllerAction);
             }
@@ -447,6 +452,7 @@ namespace BrickController2.CreationManagement
                                         controllerAction.MaxServoAngle,
                                         controllerAction.ServoBaseAngle,
                                         controllerAction.StepperAngle,
+                                        controllerAction.IsStepperFeedbackEnabled,
                                         sequenceName);
                                 }
                             }

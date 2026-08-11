@@ -20,6 +20,7 @@ namespace BrickController2.CreationManagement
         private int _maxServoAngle;
         private int _servoBaseAngle;
         private int _stepperAngle;
+        private bool _isStepperFeedbackEnabled = true;
         private string _sequenceName = string.Empty;
 
         [PrimaryKey, AutoIncrement]
@@ -110,6 +111,12 @@ namespace BrickController2.CreationManagement
         {
             get { return _stepperAngle; }
             set { _stepperAngle = value; RaisePropertyChanged(); }
+        }
+
+        public bool IsStepperFeedbackEnabled
+        {
+            get { return _isStepperFeedbackEnabled; }
+            set { _isStepperFeedbackEnabled = value; RaisePropertyChanged(); }
         }
 
         public string SequenceName

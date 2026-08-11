@@ -24,6 +24,7 @@ namespace BrickController2.DeviceManagement
 
         private readonly byte[] _sendBuffer = new byte[] { 8, 0x00, 0x81, 0x00, 0x11, 0x51, 0x00, 0x00 };
         private readonly byte[] _servoSendBuffer = new byte[] { 14, 0x00, 0x81, 0x00, 0x11, 0x0d, 0x00, 0x00, 0x00, 0x00, 50, 50, 126, 0x00 };
+        private readonly byte[] _stepperSendBuffer = new byte[] { 14, 0x00, 0x81, 0x00, 0x11, 0x0b, 0x00, 0x00, 0x00, 0x00, 50, 50, 126, 0x03 };
         private readonly byte[] _virtualPortSendBuffer = new byte[] { 8, 0x00, 0x81, 0x00, 0x00, 0x02, 0x00, 0x00 };
 
         private readonly int[] _outputValues;
@@ -36,6 +37,7 @@ namespace BrickController2.DeviceManagement
         private readonly int[] _servoBaseAngles;
         private readonly int[] _stepperAngles;
         private readonly int[] _stepperTargetAngles;
+        private readonly bool[] _stepperFeedbackEnabled;
 
         private readonly int[] _absolutePositions;
         private readonly int[] _relativePositions;
@@ -57,6 +59,7 @@ namespace BrickController2.DeviceManagement
             _servoBaseAngles = new int[NumberOfChannels];
             _stepperAngles = new int[NumberOfChannels];
             _stepperTargetAngles = new int[NumberOfChannels];
+            _stepperFeedbackEnabled = new bool[NumberOfChannels];
 
             _absolutePositions = new int[NumberOfChannels];
             _relativePositions = new int[NumberOfChannels];
@@ -91,6 +94,7 @@ namespace BrickController2.DeviceManagement
                         _servoBaseAngles[c] = 0;
                         _stepperAngles[c] = 0;
                         _stepperTargetAngles[c] = 0;
+                        _stepperFeedbackEnabled[c] = false;
 
                         _absolutePositions[c] = 0;
                         _relativePositions[c] = 0;
@@ -115,6 +119,7 @@ namespace BrickController2.DeviceManagement
 
                     case ChannelOutputType.StepperMotor:
                         _stepperAngles[channelConfig.Channel] = channelConfig.StepperAngle;
+                        _stepperFeedbackEnabled[channelConfig.Channel] = channelConfig.IsStepperFeedbackEnabled;
                         break;
                 }
             }
@@ -346,7 +351,7 @@ namespace BrickController2.DeviceManagement
                         await Task.Delay(300, token);
                         await ResetServoAsync(channel, _servoBaseAngles[channel], token);
                     }
-                    else if (_channelOutputTypes[channel] == ChannelOutputType.StepperMotor)
+                    else if (_channelOutputTypes[channel] == ChannelOutputType.StepperMotor && _stepperFeedbackEnabled[channel])
                     {
                         await SetupChannelForPortInformationAsync(channel, token);
                         await Task.Delay(300, token);
@@ -519,7 +524,14 @@ namespace BrickController2.DeviceManagement
             }
         }
 
-        private async Task<bool> SendStepperOutputValueAsync(int channel, CancellationToken token)
+        private Task<bool> SendStepperOutputValueAsync(int channel, CancellationToken token)
+        {
+            return _stepperFeedbackEnabled[channel] ?
+                SendStepperOutputValueWithFeedbackAsync(channel, token) :
+                SendStepperOutputValueLegacyAsync(channel, token);
+        }
+
+        private async Task<bool> SendStepperOutputValueWithFeedbackAsync(int channel, CancellationToken token)
         {
             try
             {
@@ -554,6 +566,53 @@ namespace BrickController2.DeviceManagement
                         // compound across successive presses.
                         _stepperTargetAngles[channel] = settledAngle;
 
+                        await Task.Delay(SEND_DELAY, token);
+                        return true;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    _lastOutputValues[channel] = v;
+                }
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private async Task<bool> SendStepperOutputValueLegacyAsync(int channel, CancellationToken token)
+        {
+            try
+            {
+                int v, sendAttemptsLeft;
+
+                lock (_outputLock)
+                {
+                    v = _outputValues[channel];
+                    sendAttemptsLeft = _sendAttemptsLeft[channel];
+                    _sendAttemptsLeft[channel] = sendAttemptsLeft > 0 ? sendAttemptsLeft - 1 : 0;
+                }
+
+                var stepperAngle = _stepperAngles[channel];
+                _stepperSendBuffer[3] = (byte)channel;
+                _stepperSendBuffer[6] = (byte)(stepperAngle & 0xff);
+                _stepperSendBuffer[7] = (byte)((stepperAngle >> 8) & 0xff);
+                _stepperSendBuffer[8] = (byte)((stepperAngle >> 16) & 0xff);
+                _stepperSendBuffer[9] = (byte)((stepperAngle >> 24) & 0xff);
+                _stepperSendBuffer[10] = (byte)(v > 0 ? 50 : -50);
+
+                if (v != _lastOutputValues[channel] && Math.Abs(v) == 100)
+                {
+                    if (await _bleDevice!.WriteNoResponseAsync(_characteristic!, _stepperSendBuffer, token))
+                    {
+                        _lastOutputValues[channel] = v;
                         await Task.Delay(SEND_DELAY, token);
                         return true;
                     }
