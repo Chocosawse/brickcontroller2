@@ -15,6 +15,17 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Pin .NET SDK to 8.0
+        run: |
+          cat > global.json << 'EOF'
+          {
+            "sdk": {
+              "version": "8.0.100",
+              "rollForward": "latestFeature"
+            }
+          }
+          EOF
+
       - name: Install MAUI Android workload
         run: dotnet workload install maui-android
 
