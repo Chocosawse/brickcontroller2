@@ -32,10 +32,33 @@ jobs:
       - name: Install MAUI Android workload
         run: dotnet workload install maui-android
 
+      - name: Restore or create a persistent signing keystore
+        uses: actions/cache@v4
+        with:
+          path: temp-apk-build.keystore
+          key: temp-apk-build-keystore-v1
+
+      - name: Generate signing keystore if not already cached
+        run: |
+          if [ ! -f temp-apk-build.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore temp-apk-build.keystore \
+              -storepass "temp-apk-build" \
+              -keypass "temp-apk-build" \
+              -alias "temp-apk-build" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=BrickController2 Temp Build, O=BrickController2, C=US"
+          fi
+
       - name: Build APK
         run: >
           dotnet build BrickController2/BrickController2.Android/BrickController2.Android.csproj
           -c Release -f net8.0-android -p:AndroidPackageFormat=apk
+          -p:AndroidKeyStore=true
+          -p:AndroidSigningKeyStore=${{ github.workspace }}/temp-apk-build.keystore
+          -p:AndroidSigningKeyAlias=temp-apk-build
+          -p:AndroidSigningKeyPass=temp-apk-build
+          -p:AndroidSigningStorePass=temp-apk-build
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
