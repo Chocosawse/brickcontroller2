@@ -1,0 +1,31 @@
+name: Temp Android APK Build
+
+on:
+  push:
+    branches: [ temp/android-apk-build ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install MAUI Android workload
+        run: dotnet workload install maui-android
+
+      - name: Build APK
+        run: >
+          dotnet build BrickController2/BrickController2.Android/BrickController2.Android.csproj
+          -c Debug -f net8.0-android -p:AndroidPackageFormat=apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: brickcontroller2-apk
+          path: BrickController2/BrickController2.Android/bin/Debug/net8.0-android/*-Signed.apk
+          if-no-files-found: error
