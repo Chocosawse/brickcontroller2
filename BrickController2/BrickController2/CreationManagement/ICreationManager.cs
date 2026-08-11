@@ -43,6 +43,7 @@ namespace BrickController2.CreationManagement
             int maxServoAngle,
             int servoBaseAngle,
             int stepperAngle,
+            bool isStepperFeedbackEnabled,
             string sequenceName);
         Task DeleteControllerActionAsync(ControllerAction controllerAction);
         Task UpdateControllerActionAsync(
@@ -60,6 +61,7 @@ namespace BrickController2.CreationManagement
             int maxServoAngle,
             int servoBaseAngle,
             int stepperAngle,
+            bool isStepperFeedbackEnabled,
             string sequenceName);
 
         Task ImportSequenceAsync(string sequenceFilename);

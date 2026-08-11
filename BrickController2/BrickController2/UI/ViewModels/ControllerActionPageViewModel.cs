@@ -59,6 +59,7 @@ namespace BrickController2.UI.ViewModels
                 Action.AxisDeadZonePercent = ControllerAction.AxisDeadZonePercent;
                 Action.ServoBaseAngle = ControllerAction.ServoBaseAngle;
                 Action.StepperAngle = ControllerAction.StepperAngle;
+                Action.IsStepperFeedbackEnabled = ControllerAction.IsStepperFeedbackEnabled;
                 Action.SequenceName = ControllerAction.SequenceName;
             }
             else
@@ -77,6 +78,7 @@ namespace BrickController2.UI.ViewModels
                 Action.AxisDeadZonePercent = 0;
                 Action.ServoBaseAngle = 0;
                 Action.StepperAngle = 90;
+                Action.IsStepperFeedbackEnabled = true;
                 Action.SequenceName = string.Empty;
             }
 
@@ -174,6 +176,7 @@ namespace BrickController2.UI.ViewModels
                             Action.MaxServoAngle,
                             Action.ServoBaseAngle,
                             Action.StepperAngle,
+                            Action.IsStepperFeedbackEnabled,
                             Action.SequenceName);
                     }
                     else
@@ -193,6 +196,7 @@ namespace BrickController2.UI.ViewModels
                             Action.MaxServoAngle,
                             Action.ServoBaseAngle,
                             Action.StepperAngle,
+                            Action.IsStepperFeedbackEnabled,
                             Action.SequenceName);
                     }
                 },
