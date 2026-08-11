@@ -125,6 +125,8 @@ namespace BrickController2.DeviceManagement
 
         public override bool CanResetOutput(int channel) => channel < NUMBER_OF_PU_PORTS;
 
+        public override bool CanChangeMaxServoAngle(int channel) => channel < NUMBER_OF_PU_PORTS;
+
         public override async Task ResetOutputAsync(int channel, float value, CancellationToken token)
         {
             CheckChannel(channel);
