@@ -17,6 +17,7 @@ namespace BrickController2.BusinessLogic
         private readonly IDictionary<(string EventCode, string DeviceId, int Channel), float> _previousAxisOutputs = new Dictionary<(string, string, int), float>();
         private readonly IDictionary<(string DeviceId, int Channel), bool> _disabledOutputForAxises = new Dictionary<(string, int), bool>();
         private readonly IDictionary<(string DeviceId, int Channel), IDictionary<(GameControllerEventType EventType, string EventCode), float>> _axisOutputValues = new Dictionary<(string, int), IDictionary<(GameControllerEventType, string), float>>();
+        private readonly IDictionary<(string DeviceId, int Channel), bool> _globalInvertStates = new Dictionary<(string, int), bool>();
 
         public PlayLogic(
             ICreationManager creationManager,
@@ -96,6 +97,12 @@ namespace BrickController2.BusinessLogic
                                     continue;
                                 }
 
+                                if (controllerAction.ButtonType == ControllerButtonType.GlobalToggle)
+                                {
+                                    ToggleGlobalInvert(controllerAction);
+                                    continue;
+                                }
+
                                 var outputValue = ProcessButtonEvent(isPressed, controllerAction, device!.DeviceType);
                                 device.SetOutput(channel, outputValue);
                             }
@@ -123,9 +130,10 @@ namespace BrickController2.BusinessLogic
         private float ProcessButtonEvent(bool isPressed, ControllerAction controllerAction, DeviceType deviceType)
         {
             var previousOutputs = GetPreviousOutputs(controllerAction);
+            var isInverted = GetEffectiveInvert(controllerAction);
             float currentOutput = 0;
-            float buttonValue = isPressed ? (controllerAction.IsInvert ? -1 : 1) : 0;
-            
+            float buttonValue = isPressed ? (isInverted ? -1 : 1) : 0;
+
             switch (controllerAction.ButtonType)
             {
                 case ControllerButtonType.Normal:
@@ -173,7 +181,7 @@ namespace BrickController2.BusinessLogic
 
                 case ControllerButtonType.Accelerator:
                     var accelarationStep = GetAccelarationStep(deviceType);
-                    accelarationStep = controllerAction.IsInvert ? -accelarationStep : accelarationStep;
+                    accelarationStep = isInverted ? -accelarationStep : accelarationStep;
                     currentOutput = Math.Min(Math.Max(previousOutputs[0] + accelarationStep, -1), 1);
                     break;
 
@@ -181,7 +189,7 @@ namespace BrickController2.BusinessLogic
                     var sequence = _creationManager.Sequences.FirstOrDefault(s => s.Name == controllerAction.SequenceName);
                     if (sequence != null)
                     {
-                        _sequencePlayer.ToggleSequence(controllerAction.DeviceId, controllerAction.Channel, controllerAction.IsInvert, sequence);
+                        _sequencePlayer.ToggleSequence(controllerAction.DeviceId, controllerAction.Channel, isInverted, sequence);
                     }
                     break;
             }
@@ -215,7 +223,7 @@ namespace BrickController2.BusinessLogic
         {
             var previousAxisValue = GetPreviousAxisOutput(gameControllerEventCode, controllerAction);
 
-            axisValue = controllerAction.IsInvert ? -axisValue : axisValue;
+            axisValue = GetEffectiveInvert(controllerAction) ? -axisValue : axisValue;
 
             var axisDeadZone = controllerAction.AxisDeadZonePercent / 100F;
             if (axisDeadZone > 0)
@@ -376,6 +384,22 @@ namespace BrickController2.BusinessLogic
         private void SetIsOutputDisabledForAxises(ControllerAction controllerAction, bool value)
         {
             _disabledOutputForAxises[(controllerAction.DeviceId, controllerAction.Channel)] = value;
+        }
+
+        private bool GetEffectiveInvert(ControllerAction controllerAction)
+        {
+            return controllerAction.IsInvert ^ GetIsGloballyInverted(controllerAction);
+        }
+
+        private bool GetIsGloballyInverted(ControllerAction controllerAction)
+        {
+            return _globalInvertStates.TryGetValue((controllerAction.DeviceId, controllerAction.Channel), out var isInverted) && isInverted;
+        }
+
+        private void ToggleGlobalInvert(ControllerAction controllerAction)
+        {
+            var key = (controllerAction.DeviceId, controllerAction.Channel);
+            _globalInvertStates[key] = !GetIsGloballyInverted(controllerAction);
         }
 
         private void ResetPreviousAxisOutputsForOutput(ControllerAction controllerAction)
