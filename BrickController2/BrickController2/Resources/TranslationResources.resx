@@ -498,6 +498,12 @@
   <data name="StepperFeedback" xml:space="preserve">
     <value>Verify angle (feedback loop)</value>
   </data>
+  <data name="ResyncPosition" xml:space="preserve">
+    <value>Resync position</value>
+  </data>
+  <data name="ResyncStepperPositionExplanation" xml:space="preserve">
+    <value>If the mechanism was moved by hand or is out of sync, tap this to tell the app the motor's current position is correct.</value>
+  </data>
   <data name="System" xml:space="preserve">
     <value>System</value>
   </data>
