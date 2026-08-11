@@ -168,6 +168,21 @@ namespace BrickController2.DeviceManagement
             return await AutoCalibrateServoAsync(channel, token);
         }
 
+        public override bool CanResyncStepperPosition(int channel) =>
+            _channelOutputTypes[channel] == ChannelOutputType.StepperMotor && _stepperFeedbackEnabled[channel];
+
+        public override Task ResyncStepperPositionAsync(int channel, CancellationToken token)
+        {
+            CheckChannel(channel);
+
+            lock (_positionLock)
+            {
+                _stepperTargetAngles[channel] = _absolutePositions[channel];
+            }
+
+            return Task.CompletedTask;
+        }
+
         protected override async Task<bool> ValidateServicesAsync(IEnumerable<IGattService>? services, CancellationToken token)
         {
             var service = services?.FirstOrDefault(s => s.Uuid == SERVICE_UUID);

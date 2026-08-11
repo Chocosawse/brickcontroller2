@@ -100,6 +100,12 @@ namespace BrickController2.DeviceManagement
             return Task.FromResult((true, 0F));
         }
 
+        public virtual bool CanResyncStepperPosition(int channel) => false;
+        public virtual Task ResyncStepperPositionAsync(int channel, CancellationToken token)
+        {
+            return Task.CompletedTask;
+        }
+
         public virtual bool CanBePowerSource => false;
 
         public async Task RenameDeviceAsync(Device device, string newName)

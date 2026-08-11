@@ -1,5 +1,4 @@
-﻿using System.Linq;
-using System.Threading;
+﻿using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using BrickController2.CreationManagement;
@@ -22,6 +21,7 @@ namespace BrickController2.UI.ViewModels
         private bool _isDisappearing = false;
 
         private int _servoBaseAngle;
+        private bool _isStepperFeedbackEnabled;
 
         public ChannelSetupPageViewModel(
             INavigationService navigationService,
@@ -37,10 +37,12 @@ namespace BrickController2.UI.ViewModels
             Device = parameters.Get<Device>("device");
             Action = parameters.Get<ControllerAction>("controlleraction");
             ServoBaseAngle = Action.ServoBaseAngle;
+            IsStepperFeedbackEnabled = Action.IsStepperFeedbackEnabled;
 
             SaveChannelSettingsCommand = new SafeCommand(async () => await SaveChannelSettingsAsync(), () => !_dialogService.IsDialogOpen);
             AutoCalibrateServoCommand = new SafeCommand(async () => await AutoCalibrateServoAsync(), () => Device.CanAutoCalibrateOutput(Action.Channel));
             ResetServoBaseCommand = new SafeCommand(async () => await ResetServoBaseAngleAsync(), () => Device.CanResetOutput(Action.Channel));
+            ResyncStepperPositionCommand = new SafeCommand(async () => await ResyncStepperPositionAsync(), () => Device.CanResyncStepperPosition(Action.Channel));
         }
 
         public Device Device { get; }
@@ -52,9 +54,16 @@ namespace BrickController2.UI.ViewModels
             set { _servoBaseAngle = value; RaisePropertyChanged(); }
         }
 
+        public bool IsStepperFeedbackEnabled
+        {
+            get { return _isStepperFeedbackEnabled; }
+            set { _isStepperFeedbackEnabled = value; RaisePropertyChanged(); }
+        }
+
         public ICommand SaveChannelSettingsCommand { get; }
         public ICommand AutoCalibrateServoCommand { get; }
         public ICommand ResetServoBaseCommand { get; }
+        public ICommand ResyncStepperPositionCommand { get; }
 
         public override async void OnAppearing()
         {
@@ -112,10 +121,23 @@ namespace BrickController2.UI.ViewModels
                         {
                             using (token.Register(() => _connectionTokenSource?.Cancel()))
                             {
+                                var channelConfigs = new[]
+                                {
+                                    new ChannelConfiguration
+                                    {
+                                        Channel = Action.Channel,
+                                        ChannelOutputType = Action.ChannelOutputType,
+                                        MaxServoAngle = Action.MaxServoAngle,
+                                        ServoBaseAngle = Action.ServoBaseAngle,
+                                        StepperAngle = Action.StepperAngle,
+                                        IsStepperFeedbackEnabled = Action.IsStepperFeedbackEnabled
+                                    }
+                                };
+
                                 await Device.ConnectAsync(
                                     false,
                                     OnDeviceDisconnected,
-                                    Enumerable.Empty<ChannelConfiguration>(),
+                                    channelConfigs,
                                     false,
                                     false,
                                     token);
@@ -170,6 +192,7 @@ namespace BrickController2.UI.ViewModels
         private async Task SaveChannelSettingsAsync()
         {
             Action.ServoBaseAngle = ServoBaseAngle;
+            Action.IsStepperFeedbackEnabled = IsStepperFeedbackEnabled;
             await NavigationService.NavigateModalBackAsync();
         }
 
@@ -198,6 +221,20 @@ namespace BrickController2.UI.ViewModels
                 async (progressDialog, token) =>
                 {
                     await Device.ResetOutputAsync(Action.Channel, ServoBaseAngle / 180F, token);
+                },
+                Translate("Reseting"),
+                null,
+                Translate("Cancel"),
+                _disappearingTokenSource?.Token ?? default);
+        }
+
+        private async Task ResyncStepperPositionAsync()
+        {
+            await _dialogService.ShowProgressDialogAsync(
+                false,
+                async (progressDialog, token) =>
+                {
+                    await Device.ResyncStepperPositionAsync(Action.Channel, token);
                 },
                 Translate("Reseting"),
                 null,
