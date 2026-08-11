@@ -11,16 +11,19 @@ namespace BrickController2.DeviceManagement
     internal abstract class ControlPlusDevice : BluetoothDevice
     {
         private const int MAX_SEND_ATTEMPTS = 10;
+        private const int STEPPER_TURN_SPEED = 50;
+        private const int STEPPER_ANGLE_TOLERANCE_DEGREES = 3;
 
         private static readonly Guid SERVICE_UUID = new Guid("00001623-1212-efde-1623-785feabcd123");
         private static readonly Guid CHARACTERISTIC_UUID = new Guid("00001624-1212-efde-1623-785feabcd123");
 
         private static readonly TimeSpan SEND_DELAY = TimeSpan.FromMilliseconds(60);
         private static readonly TimeSpan POSITION_EXPIRATION = TimeSpan.FromMilliseconds(200);
+        private static readonly TimeSpan STEPPER_SETTLE_QUIET_PERIOD = TimeSpan.FromMilliseconds(150);
+        private static readonly TimeSpan STEPPER_SETTLE_MAX_WAIT = TimeSpan.FromMilliseconds(1500);
 
         private readonly byte[] _sendBuffer = new byte[] { 8, 0x00, 0x81, 0x00, 0x11, 0x51, 0x00, 0x00 };
         private readonly byte[] _servoSendBuffer = new byte[] { 14, 0x00, 0x81, 0x00, 0x11, 0x0d, 0x00, 0x00, 0x00, 0x00, 50, 50, 126, 0x00 };
-        private readonly byte[] _stepperSendBuffer = new byte[] { 14, 0x00, 0x81, 0x00, 0x11, 0x0b, 0x00, 0x00, 0x00, 0x00, 50, 50, 126, 0x00 };
         private readonly byte[] _virtualPortSendBuffer = new byte[] { 8, 0x00, 0x81, 0x00, 0x00, 0x02, 0x00, 0x00 };
 
         private readonly int[] _outputValues;
@@ -32,6 +35,7 @@ namespace BrickController2.DeviceManagement
         private readonly int[] _maxServoAngles;
         private readonly int[] _servoBaseAngles;
         private readonly int[] _stepperAngles;
+        private readonly int[] _stepperTargetAngles;
 
         private readonly int[] _absolutePositions;
         private readonly int[] _relativePositions;
@@ -52,6 +56,7 @@ namespace BrickController2.DeviceManagement
             _maxServoAngles = new int[NumberOfChannels];
             _servoBaseAngles = new int[NumberOfChannels];
             _stepperAngles = new int[NumberOfChannels];
+            _stepperTargetAngles = new int[NumberOfChannels];
 
             _absolutePositions = new int[NumberOfChannels];
             _relativePositions = new int[NumberOfChannels];
@@ -85,6 +90,7 @@ namespace BrickController2.DeviceManagement
                         _maxServoAngles[c] = 0;
                         _servoBaseAngles[c] = 0;
                         _stepperAngles[c] = 0;
+                        _stepperTargetAngles[c] = 0;
 
                         _absolutePositions[c] = 0;
                         _relativePositions[c] = 0;
@@ -340,6 +346,16 @@ namespace BrickController2.DeviceManagement
                         await Task.Delay(300, token);
                         await ResetServoAsync(channel, _servoBaseAngles[channel], token);
                     }
+                    else if (_channelOutputTypes[channel] == ChannelOutputType.StepperMotor)
+                    {
+                        await SetupChannelForPortInformationAsync(channel, token);
+                        await Task.Delay(300, token);
+
+                        lock (_positionLock)
+                        {
+                            _stepperTargetAngles[channel] = _absolutePositions[channel];
+                        }
+                    }
                 }
 
                 return true;
@@ -516,19 +532,28 @@ namespace BrickController2.DeviceManagement
                     _sendAttemptsLeft[channel] = sendAttemptsLeft > 0 ? sendAttemptsLeft - 1 : 0;
                 }
 
-                var stepperAngle = _stepperAngles[channel];
-                _stepperSendBuffer[3] = (byte)channel;
-                _stepperSendBuffer[6] = (byte)(stepperAngle & 0xff);
-                _stepperSendBuffer[7] = (byte)((stepperAngle >> 8) & 0xff);
-                _stepperSendBuffer[8] = (byte)((stepperAngle >> 16) & 0xff);
-                _stepperSendBuffer[9] = (byte)((stepperAngle >> 24) & 0xff);
-                _stepperSendBuffer[10] = (byte)(v > 0 ? 50 : -50);
-
                 if (v != _lastOutputValues[channel] && Math.Abs(v) == 100)
                 {
-                    if (await _bleDevice!.WriteNoResponseAsync(_characteristic!, _stepperSendBuffer, token))
+                    var delta = v > 0 ? _stepperAngles[channel] : -_stepperAngles[channel];
+                    var targetAngle = NormalizeAngle(_stepperTargetAngles[channel] + delta);
+
+                    if (await TurnAsync(channel, targetAngle, STEPPER_TURN_SPEED, token))
                     {
                         _lastOutputValues[channel] = v;
+
+                        // Verify the motor actually reached the target and correct it if load/stiction
+                        // caused it to over- or undershoot, instead of trusting the open-loop move.
+                        var settledAngle = await WaitForSettledPositionAsync(channel, token);
+                        if (Math.Abs(NormalizeAngle(settledAngle - targetAngle)) > STEPPER_ANGLE_TOLERANCE_DEGREES)
+                        {
+                            await TurnAsync(channel, targetAngle, STEPPER_TURN_SPEED, token);
+                            settledAngle = await WaitForSettledPositionAsync(channel, token);
+                        }
+
+                        // Track the real measured angle (not the assumed target) so drift can't
+                        // compound across successive presses.
+                        _stepperTargetAngles[channel] = settledAngle;
+
                         await Task.Delay(SEND_DELAY, token);
                         return true;
                     }
@@ -547,6 +572,32 @@ namespace BrickController2.DeviceManagement
             catch
             {
                 return false;
+            }
+        }
+
+        private async Task<int> WaitForSettledPositionAsync(int channel, CancellationToken token)
+        {
+            var start = DateTime.Now;
+
+            while (DateTime.Now - start < STEPPER_SETTLE_MAX_WAIT)
+            {
+                DateTime lastUpdateTime;
+                lock (_positionLock)
+                {
+                    lastUpdateTime = _positionUpdateTimes[channel];
+                }
+
+                if (lastUpdateTime != DateTime.MinValue && DateTime.Now - lastUpdateTime > STEPPER_SETTLE_QUIET_PERIOD)
+                {
+                    break;
+                }
+
+                await Task.Delay(50, token);
+            }
+
+            lock (_positionLock)
+            {
+                return _absolutePositions[channel];
             }
         }
 
@@ -730,7 +781,7 @@ namespace BrickController2.DeviceManagement
             var a2 = (byte)((angle >> 16) & 0xff);
             var a3 = (byte)((angle >> 24) & 0xff);
 
-            return _bleDevice!.WriteAsync(_characteristic!, new byte[] { 0x0e, 0x00, 0x81, (byte)channel, 0x11, 0x0d, a0, a1, a2, a3, (byte)speed, 0x64, 0x7e, 0x00 }, token);
+            return _bleDevice!.WriteAsync(_characteristic!, new byte[] { 0x0e, 0x00, 0x81, (byte)channel, 0x11, 0x0d, a0, a1, a2, a3, (byte)speed, 0x64, 0x7e, 0x03 }, token);
         }
 
         private Task<bool> ResetAsync(int channel, int angle, CancellationToken token)
